@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://login.microsoftonline.com https://graph.microsoft.com https://*.microsoftpersonalcontent.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>MyToDo V0.3.1</title>
+<link rel="stylesheet" href="mytodo-v031.css"></head><body>
+<header><div><h1>☑ MyToDo <small>V0.3.1</small></h1><div class="status" id="saveStatus">端末内に保存</div></div><div class="row"><button class="btn tiny" id="exportBtn">バックアップ</button><button class="btn tiny" id="importBtn">復元</button><input type="file" id="importFile" accept="application/json,.json" hidden></div></header>
+<main>
+<section class="panel" id="listsPanel"><h2>リスト</h2><div id="lists" class="stack"></div><div class="row section"><input id="listName" class="grow" placeholder="新しいリスト名" maxlength="80"><button class="btn primary" id="addList">追加</button></div><div id="syncPanel" class="section stack">
+<h2>☁ OneDrive同期（V0.3.1）</h2>
+<label class="field">アプリ登録のクライアントID<input id="clientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" spellcheck="false"></label>
+<div class="muted">登録するリダイレクトURI（SPA）: <span id="redirectUri"></span></div>
+<div class="row" style="flex-wrap:wrap"><button id="signinBtn" class="btn primary">Microsoftにサインイン</button><button id="signoutBtn" class="btn">接続解除</button></div>
+<div class="row" style="flex-wrap:wrap"><button id="backupSnapshotsBtn" class="btn">保護バックアップを出力</button></div><div class="row" style="flex-wrap:wrap"><button id="cloudReadBtn" class="btn" disabled>クラウドから読み込み</button><button id="cloudWriteBtn" class="btn" disabled>クラウドへ保存</button></div>
+<div class="muted" id="accountInfo">認証アカウント：未確認</div><div id="syncInfo" class="muted" role="status" aria-live="polite">未接続。ローカル保存は有効です。</div>
+<div class="muted">接続先：個人用OneDriveのアプリ専用フォルダー。会社アカウントでは接続しないでください。接続直後は自動同期しません。最初にクラウドと端末のどちらを採用するか選んでください。連携確立後は、編集時に保存・約30秒ごとに変更を確認します。</div>
+</div><div id="notice">※公開するHTMLとスクリプトは誰でも閲覧できます。ToDo本体と認証情報をGitHubへアップロードしないでください。業務情報の保存は社内規定に従ってください。</div></section>
+<section class="panel"><h2 id="viewTitle">すべてのToDo</h2><div class="toolbar"><label class="row"><input type="checkbox" id="showDone">完了済みも表示</label><input id="search" class="grow" placeholder="タイトル・メモ検索" aria-label="検索"><select id="priorityFilter" aria-label="重要度の絞り込み"><option value="all">重要度：すべて</option><option value="critical">最重要</option><option value="high">高</option><option value="normal">中</option><option value="low">低</option></select><select id="sortMode" aria-label="並び順"><option value="manual">自由な並び順</option><option value="priority">重要度順</option><option value="due">期限が近い順</option></select></div><div class="row" style="margin-bottom:12px"><input id="taskName" class="grow" maxlength="250" placeholder="新しいToDo"><button class="btn primary" id="addTask">追加</button></div><div class="muted" id="sortHelp" style="font-size:12px;margin-bottom:7px">≡ をドラッグして並べ替え（スマホも対応）</div><div id="tasks" class="stack"></div></section>
+<section class="panel" id="detailPanel"><h2>ToDo詳細</h2><div id="detail"><div class="empty">ToDoを選択してください</div></div></section>
+</main><div id="reminderToast" class="toast" role="alert" aria-live="assertive"></div><footer>MyToDo V0.3.1 · ローカル保存版 · 個人用の非機密データで動作確認してください</footer>
+<script src="mytodo-v031.js" defer></script></body></html>
