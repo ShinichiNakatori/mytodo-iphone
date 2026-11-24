@@ -36,8 +36,44 @@ function button(txt,fn,cls='btn tiny'){const b=el('button',cls,txt);b.type='butt
 function display(){normalize();renderLists();renderTasks();renderDetail();save();if(typeof sync!=="undefined")checkLocalDelta()}
 function renderLists(){const root=$('#lists');root.replaceChildren();const allCount=db.tasks.filter(t=>!t.done).length;const entries=[{id:'all',name:'すべて',count:allCount},...db.lists.map(l=>({...l,count:db.tasks.filter(t=>t.listId===l.id&&!t.done).length}))];entries.forEach(l=>{const b=button(l.name+'  ('+l.count+')',()=>{db.selectedList=l.id;display()},'listbutton'+(db.selectedList===l.id?' selected':''));root.append(b)});if(db.selectedList!=='all'){const list=db.lists.find(l=>l.id===db.selectedList);if(list){const actions=el('div','row section');actions.append(button('リスト名変更',()=>{const next=prompt('新しいリスト名',list.name);if(next?.trim()){list.name=next.trim();display()}}),button('リスト削除',()=>{const count=db.tasks.filter(t=>t.listId===list.id).length;if(count){alert('このリストにはToDoが残っています。先に別のリストへ移動してください。');return}if(confirm('空のリストを削除しますか？')){db.lists=db.lists.filter(x=>x.id!==list.id);db.selectedList='all';display()}},'btn tiny danger'));root.append(actions)}}}
 function visibleTasks(){let ts=db.tasks.filter(t=>(db.selectedList==='all'||t.listId===db.selectedList)&&($('#showDone').checked||!t.done));const pf=$('#priorityFilter').value;if(pf!=='all')ts=ts.filter(t=>t.priority===pf);const search=$('#search').value.trim().toLowerCase();if(search)ts=ts.filter(t=>(t.title+' '+t.notes.map(n=>n.text).join(' ')+' '+t.history.map(n=>n.text).join(' ')).toLowerCase().includes(search));if(db.selectedList==='all')ts.sort((a,b)=>db.orderAll.indexOf(a.id)-db.orderAll.indexOf(b.id));else ts.sort((a,b)=>(a.order||0)-(b.order||0));const mode=$('#sortMode').value;if(mode==='priority')ts.sort((a,b)=>PRIORITY[a.priority].rank-PRIORITY[b.priority].rank);if(mode==='due')ts.sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));return ts}
-function reorder(src,dst){if($('#sortMode').value!=='manual'){alert('自由な並び順に戻してからドラッグしてください。');return}if(src===dst)return;const ordered=visibleTasks().map(t=>t.id),si=ordered.indexOf(src),di=ordered.indexOf(dst);if(si<0||di<0)return;ordered.splice(si,1);ordered.splice(di,0,src);if(db.selectedList==='all'){const set=new Set(ordered);const original=db.orderAll;let idx=0;db.orderAll=original.map(x=>set.has(x)?ordered[idx++]:x)}else{ordered.forEach((id,i)=>taskById(id).order=i*100);const group=db.tasks.filter(t=>t.listId===db.selectedList&&!ordered.includes(t.id));group.forEach((t,i)=>t.order=(ordered.length+i)*100)}display()}
-function renderTasks(){const name=db.selectedList==='all'?'すべてのToDo':db.lists.find(l=>l.id===db.selectedList)?.name||'ToDo';$('#viewTitle').textContent=name;const root=$('#tasks');root.replaceChildren();const ts=visibleTasks();if(!ts.length)root.append(el('div','empty','表示するToDoがありません'));ts.forEach(t=>{const r=el('div','item'+(t.id===db.selectedTask?' active':'')+(t.done?' done':''));r.dataset.id=t.id;const sw=el('div','swatch');sw.style.background=t.color;const g=el('button','grip','≡');g.type='button';g.title='ドラッグして並べ替え';g.setAttribute('aria-label','ドラッグして並べ替え');g.disabled=$('#sortMode').value!=='manual';g.addEventListener('pointerdown',ev=>startDrag(ev,t.id,r));const c=el('input');c.type='checkbox';c.checked=!!t.done;c.title='完了';c.addEventListener('change',()=>{t.done=c.checked;display()});const content=el('button','grow');content.style.cssText='text-align:left;border:0;background:none;cursor:pointer;min-width:0';const title=el('div','itemtitle',t.title),meta=el('div','muted',db.lists.find(l=>l.id===t.listId)?.name+' · メモ '+t.notes.length+'件 · 履歴 '+t.history.length+'件');meta.style.fontSize='11px';const badges=el('div','row');badges.style.cssText='flex-wrap:wrap;gap:5px;margin-top:4px';badges.append(el('span','tag '+t.priority,PRIORITY[t.priority].label));if(t.dueAt){const overdue=!t.done&&new Date(t.dueAt).getTime()<Date.now();badges.append(el('span',overdue?'overdue':'muted',(overdue?'期限超過 ':'期限 ')+new Date(t.dueAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})))}if(t.remindAt)badges.append(el('span','reminder-mark','🔔'));content.append(title,meta,badges);content.addEventListener('click',()=>{db.selectedTask=t.id;display()});r.append(sw,g,c,content);root.append(r)});}
+function reorder(src,dst){
+  const mode=$('#sortMode').value;
+  if(mode==='due'||src===dst)return;
+  const visible=visibleTasks(),source=taskById(src),target=taskById(dst);
+  if(!source||!target)return;
+  if(mode==='priority'){
+    if(source.priority!==target.priority){$('#sortHelp').textContent='重要度順では同じ重要度の中だけ移動できます';return}
+    // 同一重要度かつ現在表示中の項目だけを動かし、他の項目の位置は保持する
+    const ordered=visible.filter(t=>t.priority===source.priority).map(t=>t.id);
+    const si=ordered.indexOf(src),di=ordered.indexOf(dst);
+    if(si<0||di<0)return;
+    ordered.splice(si,1);ordered.splice(di,0,src);
+    const selected=new Set(ordered);
+    const replaceSlots=(allIds)=>{let k=0;return allIds.map(x=>selected.has(x)?ordered[k++]:x)};
+    if(db.selectedList==='all'){
+      db.orderAll=replaceSlots(db.orderAll);
+    }else{
+      const all=db.tasks.filter(t=>t.listId===db.selectedList)
+        .sort((a,b)=>(a.order||0)-(b.order||0)).map(t=>t.id);
+      replaceSlots(all).forEach((taskId,i)=>{taskById(taskId).order=(i+1)*100});
+    }
+    display();return;
+  }
+  // 自由な並び順：従来の動作を維持
+  const ordered=visible.map(t=>t.id),si=ordered.indexOf(src),di=ordered.indexOf(dst);
+  if(si<0||di<0)return;
+  ordered.splice(si,1);ordered.splice(di,0,src);
+  if(db.selectedList==='all'){
+    const set=new Set(ordered);let idx=0;
+    db.orderAll=db.orderAll.map(x=>set.has(x)?ordered[idx++]:x);
+  }else{
+    ordered.forEach((id,i)=>taskById(id).order=i*100);
+    const group=db.tasks.filter(t=>t.listId===db.selectedList&&!ordered.includes(t.id));
+    group.forEach((t,i)=>t.order=(ordered.length+i)*100);
+  }
+  display();
+}
+function renderTasks(){const name=db.selectedList==='all'?'すべてのToDo':db.lists.find(l=>l.id===db.selectedList)?.name||'ToDo';$('#viewTitle').textContent=name;const root=$('#tasks');root.replaceChildren();const ts=visibleTasks();$('#sortHelp').textContent=$('#sortMode').value==='priority'?'同じ重要度内で ≡ をドラッグして並べ替え':$('#sortMode').value==='due'?'期限順ではドラッグできません':'≡ をドラッグして並べ替え（スマホも対応）';if(!ts.length)root.append(el('div','empty','表示するToDoがありません'));ts.forEach(t=>{const r=el('div','item'+(t.id===db.selectedTask?' active':'')+(t.done?' done':''));r.dataset.id=t.id;const sw=el('div','swatch');sw.style.background=t.color;const g=el('button','grip','≡');g.type='button';g.title='ドラッグして並べ替え';g.setAttribute('aria-label','ドラッグして並べ替え');g.disabled=$('#sortMode').value==='due';g.addEventListener('pointerdown',ev=>startDrag(ev,t.id,r));const c=el('input');c.type='checkbox';c.checked=!!t.done;c.title='完了';c.addEventListener('change',()=>{t.done=c.checked;display()});const content=el('button','grow');content.style.cssText='text-align:left;border:0;background:none;cursor:pointer;min-width:0';const title=el('div','itemtitle',t.title),meta=el('div','muted',db.lists.find(l=>l.id===t.listId)?.name+' · メモ '+t.notes.length+'件 · 履歴 '+t.history.length+'件');meta.style.fontSize='11px';const badges=el('div','row');badges.style.cssText='flex-wrap:wrap;gap:5px;margin-top:4px';badges.append(el('span','tag '+t.priority,PRIORITY[t.priority].label));if(t.dueAt){const overdue=!t.done&&new Date(t.dueAt).getTime()<Date.now();badges.append(el('span',overdue?'overdue':'muted',(overdue?'期限超過 ':'期限 ')+new Date(t.dueAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})))}if(t.remindAt)badges.append(el('span','reminder-mark','🔔'));content.append(title,meta,badges);content.addEventListener('click',()=>{db.selectedTask=t.id;document.body.classList.add('mobile-detail-open');display();});r.append(sw,g,c,content);root.append(r)});}
 let drag=null;
 function startDrag(e,source,node){if(e.button!==0&&e.pointerType==='mouse')return;e.preventDefault();node.querySelector('.grip').setPointerCapture(e.pointerId);drag={source,node,pointer:e.pointerId,target:null};node.classList.add('dragging');const move=ev=>{if(!drag)return;document.querySelectorAll('.drop-target').forEach(x=>x.classList.remove('drop-target'));const target=document.elementFromPoint(ev.clientX,ev.clientY)?.closest('#tasks .item');if(target&&target.dataset.id!==source){drag.target=target.dataset.id;target.classList.add('drop-target')}else drag.target=null};const finish=()=>{node.classList.remove('dragging');document.querySelectorAll('.drop-target').forEach(x=>x.classList.remove('drop-target'));const dest=drag?.target;drag=null;g.removeEventListener('pointermove',move);g.removeEventListener('pointerup',finish);g.removeEventListener('pointercancel',finish);if(dest)reorder(source,dest)};const g=node.querySelector('.grip');g.addEventListener('pointermove',move);g.addEventListener('pointerup',finish);g.addEventListener('pointercancel',finish)}
 function renderDetail(){const root=$('#detail');root.replaceChildren();const t=taskById(db.selectedTask);if(!t){root.append(el('div','empty','ToDoを選択してください'));return}const title=el('input');title.value=t.title;title.style.width='100%';title.addEventListener('change',()=>{if(title.value.trim())t.title=title.value.trim();display()});root.append(title);
@@ -51,6 +87,19 @@ const action=el('div','row between section');action.append(el('b',null,'メモ�
 root.append(el('h3',null,'独立メモ'));const list=el('div','stack');list.style.marginBottom='8px';t.notes.forEach((n,i)=>{const box=el('div','note');const area=el('textarea');area.value=n.text;area.addEventListener('change',()=>{n.text=area.value;n.updatedAt=new Date().toISOString();save();checkLocalDelta()});const sub=el('div','row between');const time=el('small',null,'更新: '+new Date(n.updatedAt||n.createdAt).toLocaleString('ja-JP'));const controls=el('div','rightbuttons');controls.append(button('↑',()=>{if(i>0){[t.notes[i-1],t.notes[i]]=[t.notes[i],t.notes[i-1]];display()}},'btn tiny'),button('↓',()=>{if(i<t.notes.length-1){[t.notes[i+1],t.notes[i]]=[t.notes[i],t.notes[i+1]];display()}},'btn tiny'),button('削除',()=>{if(confirm('メモを削除しますか？')){t.notes.splice(i,1);display()}},'btn tiny danger'));sub.append(time,controls);box.append(area,sub);list.append(box)});root.append(list);const noteInput=el('textarea');noteInput.placeholder='独立メモを追加';root.append(noteInput,button('＋ メモを追加',()=>{if(!noteInput.value.trim())return;const now=new Date().toISOString();t.notes.push({id:id(),text:noteInput.value.trim(),createdAt:now,updatedAt:now});display()},'btn primary'));
 const hsection=el('div','section');hsection.append(el('h3',null,'日付付き履歴（追記型）'));const history=[...t.history].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));history.forEach(n=>{const box=el('div','note');const line=el('div','row between');line.append(el('small',null,new Date(n.createdAt).toLocaleString('ja-JP')),button('削除',()=>{if(confirm('履歴を削除しますか？')){t.history=t.history.filter(x=>x.id!==n.id);display()}},'btn tiny danger'));box.append(line,el('p',null,n.text));hsection.append(box)});const histInput=el('textarea');histInput.placeholder='作業経過を追記';histInput.style.marginTop='8px';hsection.append(histInput,button('＋ 日時付きで追記',()=>{if(!histInput.value.trim())return;t.history.push({id:id(),text:histInput.value.trim(),createdAt:new Date().toISOString()});display()},'btn primary'));root.append(hsection);
 }
+// iPhone/スマホでは詳細をモーダル表示し、一覧位置を維持する
+function setupMobileDetail(){
+  const panel=$('#detailPanel'),heading=panel.querySelector('h2');
+  const close=button('× 閉じる',()=>{document.body.classList.remove('mobile-detail-open');},'btn tiny');
+  close.id='closeMobileDetail';close.type='button';
+  heading.append(close);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&document.body.classList.contains('mobile-detail-open')){
+      document.body.classList.remove('mobile-detail-open');
+    }
+  });
+}
+setupMobileDetail();
 function nextOrder(listId){return 100+Math.max(0,...db.tasks.filter(t=>t.listId===listId).map(t=>Number(t.order)||0))}
 $('#addList').onclick=()=>{const v=$('#listName').value.trim();if(!v)return;const i=id();db.lists.push({id:i,name:v});db.selectedList=i;$('#listName').value='';display()};$('#listName').addEventListener('keydown',e=>{if(e.key==='Enter')$('#addList').click()});
 $('#addTask').onclick=()=>{const title=$('#taskName').value.trim();if(!title)return;if(!db.lists.length){alert('最初にリストを追加してください');return}const listId=db.selectedList==='all'?db.lists[0].id:db.selectedList;const t={id:id(),title,listId,done:false,order:nextOrder(listId),notes:[],history:[],priority:'normal',color:COLORS[0],dueAt:'',remindAt:'',remindedAt:''};db.tasks.push(t);db.orderAll.push(t.id);db.selectedTask=t.id;$('#taskName').value='';display()};$('#taskName').addEventListener('keydown',e=>{if(e.key==='Enter')$('#addTask').click()});$('#showDone').onchange=renderTasks;$('#search').oninput=renderTasks;$('#priorityFilter').onchange=renderTasks;$('#sortMode').onchange=()=>{$('#sortHelp').textContent=$('#sortMode').value==='manual'?'≡ をドラッグして並べ替え（スマホも対応）':'自動並べ替え中。ドラッグするには「自由な並び順」に戻してください。';renderTasks()};
